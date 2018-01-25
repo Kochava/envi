@@ -60,8 +60,7 @@ func ExampleGetenv() {
 	}
 	fmt.Println(structured)
 
-	// ENVI_NOVALUE has no value, so it won't change and Getenv will return an
-	// *NoValueError.
+	// ENVI_NOVALUE has no value, so it won't change and Getenv will return an no-value error.
 	if err := reader.Getenv(&novalue, "ENVI_NOVALUE"); !IsNoValue(err) {
 		panic("NOVALUE was set -- expected no value!")
 	}
