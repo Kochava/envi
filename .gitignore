@@ -1,0 +1,6 @@
+*.out
+*.prof
+.DS_Store
+.*.s[a-z][a-z]
+~*
+cover.html
