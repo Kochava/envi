@@ -13,6 +13,7 @@ func TestValuesMethods(t *testing.T) {
 		"a": {"zug", "zub"},
 		"b": {"quux"},
 		"c": {},
+		"d": {"7", "6", "5", "4", "3", "2", "1"},
 	}
 
 	values := make(Values)
@@ -27,6 +28,14 @@ func TestValuesMethods(t *testing.T) {
 	values.Set("b", "bar")
 	values.Set("b", "baz")
 	values.Set("b", "quux")
+
+	values.Insert("d", "1")
+	values.Insert("d", "2")
+	values.Insert("d", "3")
+	values.Insert("d", "4")
+	values.Insert("d", "5")
+	values.Insert("d", "6")
+	values.Insert("d", "7")
 
 	values["c"] = []string{}
 
