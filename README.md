@@ -2,6 +2,7 @@ envi
 ====
 
 [![Build Status](https://travis-ci.org/Kochava/envi.svg?branch=master)](https://travis-ci.org/Kochava/envi)
+[![Coverage Status](https://coveralls.io/repos/github/Kochava/envi/badge.svg)](https://coveralls.io/github/Kochava/envi)
 
 
 envi is a library for loading data from structured environment variables and
