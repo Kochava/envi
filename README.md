@@ -1,6 +1,9 @@
 envi
 ====
 
+[![Build Status](https://travis-ci.org/Kochava/envi.svg?branch=master)](https://travis-ci.org/Kochava/envi)
+
+
 envi is a library for loading data from structured environment variables and
 maps of strings (e.g., envi.Values) into structs, slices, and general scalars
 (strings, ints, bools, etc.).
