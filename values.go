@@ -19,6 +19,18 @@ func (v Values) Del(key string) { delete(v, key) }
 // Set assigns the given value for the key, erasing any other values held by it.
 func (v Values) Set(key, value string) { v[key] = []string{value} }
 
+// Insert inserts a value at the front of a list of values for the given key.
+func (v Values) Insert(key, value string) {
+	vals := v[key]
+	if len(vals) > 0 {
+		vals = append(vals[:1], vals...)
+		vals[0] = value
+	} else {
+		vals = []string{value}
+	}
+	v[key] = vals
+}
+
 // Getenv returns the first value held by the key. If the key is defined, but the slice is empty, it returns the empty
 // string. If the key is not set, it returns the empty string and ErrNoValue.
 func (v Values) Getenv(key string) (value string, err error) {
