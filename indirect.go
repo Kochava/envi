@@ -1,6 +1,3 @@
-// Copyright 2015 Kochava. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be found in LICENSE.txt.
-
 /*
  * This code borrowed and modified from the JSON decoderState in Go's stdlib, licensed under
  * Go's license:
