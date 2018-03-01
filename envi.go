@@ -9,7 +9,7 @@
 // as part of the Reader. It unmarshals slices by attempting to either split their explicit
 // environment variable's value using a delimiter (defaults to whitespace) or by walking var_1
 // through var_N, determined by the Reader's MaxSliceLen.
-package envi
+package envi // import "github.com/Kochava/envi"
 
 // Unmarshaler defines an interface that allows a type to declare it supports unmarshaling from
 // environment variable text.
