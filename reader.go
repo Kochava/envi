@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// DefaultMaxSliceLen is the maximum slice length used when a Reader a maximum of 0 (zero) or less.
+// DefaultMaxSliceLen is the default maximum slice length used when parsing NAME_N slice values.
 const DefaultMaxSliceLen = 1000
 
 // DefaultMaxDepth is the default maximum depth of parsing nested struct values.
