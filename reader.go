@@ -435,7 +435,10 @@ func (r *Reader) loadStructField(out reflect.Value, typ reflect.Type, fieldIdx i
 		dst    = target.Interface()
 	)
 
-	target.Elem().Set(field)
+	// Only copy field's value to temporary storage if it's valid
+	if fi := reflect.Indirect(field); fi.IsValid() {
+		target.Elem().Set(fi)
+	}
 	if err = r.Getenv(dst, fname); err != nil && !IsNoValue(err) && !flags.quiet {
 		return isset, err
 	}
