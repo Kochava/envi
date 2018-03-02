@@ -14,8 +14,11 @@ import (
 	"time"
 )
 
-// defaultMaxSliceLen is the maximum slice length used when a Reader a maximum of 0 (zero) or less.
-const defaultMaxSliceLen = 1000
+// DefaultMaxSliceLen is the maximum slice length used when a Reader a maximum of 0 (zero) or less.
+const DefaultMaxSliceLen = 1000
+
+// DefaultMaxDepth is the default maximum depth of parsing nested struct values.
+const DefaultMaxDepth = 8
 
 // DefaultReader is the default envi *Reader used by the Getenv and Load functions. It may be
 // changed, but it is not safe to modify it while in use.
@@ -32,8 +35,12 @@ type Reader struct {
 	// structs (and only structs).
 	Sep string
 	// MaxSliceLen is the maximum number of environment variables that will be checked for slice
-	// values. If MaxSliceLen is less than 1, this defaults to 1000.
+	// values. If MaxSliceLen is less than 1, this defaults to DefaultMaxSliceLen.
 	MaxSliceLen int
+	// MaxDepth is the maximum depth that an unknown struct can be parsed at. If a struct is
+	// encountered that does not have known keys, field parsing is abandoned after this depth.
+	// If MaxDepth is less than 1, it defaults to DefaultMaxDepth.
+	MaxDepth int
 }
 
 // Getenv attempts to load the value held by the environment variable key into dst. If an error
@@ -50,26 +57,7 @@ type Reader struct {
 // Decoding rules for structs and slices are described under (*Reader).Load.
 func (r *Reader) Getenv(dst interface{}, key string) (err error) {
 	defer swallowLoadPanic("Getenv", key, &err)
-	val, err := r.getenv(key)
-	if err != nil && !(IsNoValue(err) && tryNoVal(dst)) {
-		if err == ErrNoValue {
-			err = NoValueError(key)
-		}
-		return err
-	}
-	return r.load(dst, val, key)
-}
-
-// getenv retrieves a value from the Reader's environment variable source if configured. If no
-// source is configured, however, it looks up the value using os.LookupEnv (where, if the variable
-// is not found, it returns a NoValueError).
-func (r *Reader) getenv(key string) (v string, err error) {
-	if r != nil && r.Source != nil {
-		return r.Source.Getenv(key)
-	} else if v, ok := os.LookupEnv(key); ok {
-		return v, nil
-	}
-	return "", ErrNoValue
+	return r.readState().loadFromEnv(dst, key)
 }
 
 // Load attempts to parse the given value (identified as key, which is occasionally relevant when
@@ -111,10 +99,65 @@ func (r *Reader) getenv(key string) (v string, err error) {
 // Slices of slices are supported but will only ever contain slices of single values.
 func (r *Reader) Load(dst interface{}, val, key string) (err error) {
 	defer swallowLoadPanic("Load", key, &err)
+	return r.readState().load(dst, val, key)
+}
+
+func (r *Reader) readState() readState {
+	return (readState{Reader: r}).reset()
+}
+
+// readState is the state of a Reader.
+type readState struct {
+	*Reader
+	depth int
+}
+
+func (r readState) loadFromEnv(dst interface{}, key string) error {
+	val, err := r.getenv(key)
+	if err != nil && !(IsNoValue(err) && tryNoVal(dst)) {
+		if err == ErrNoValue {
+			err = NoValueError(key)
+		}
+		return err
+	}
 	return r.load(dst, val, key)
 }
 
-func (r *Reader) load(dst interface{}, val, key string) (err error) {
+// descend decrements the depth counter and returns the modified readState. It does not modify the
+// current readState.
+func (r readState) descend() readState {
+	r.depth--
+	return r
+}
+
+// reset returns a readState with its depth counter reset.
+func (r readState) reset() readState {
+	const minDepth = 1
+	r.depth = r.MaxDepth
+	if r.depth < minDepth {
+		r.depth = DefaultMaxDepth
+	}
+	return r
+}
+
+// canParse returns whether or not the current readState can parse a struct.
+func (r readState) canParseStruct() bool {
+	return r.depth > 0
+}
+
+// getenv retrieves a value from the Reader's environment variable source if configured. If no
+// source is configured, however, it looks up the value using os.LookupEnv (where, if the variable
+// is not found, it returns a NoValueError).
+func (r *Reader) getenv(key string) (v string, err error) {
+	if r != nil && r.Source != nil {
+		return r.Source.Getenv(key)
+	} else if v, ok := os.LookupEnv(key); ok {
+		return v, nil
+	}
+	return "", ErrNoValue
+}
+
+func (r readState) load(dst interface{}, val, key string) (err error) {
 	var ok bool
 	if ok, err = loadTypeSwitch(dst, val, key); !ok {
 		err = r.loadReflect(dst, val, key)
@@ -203,7 +246,7 @@ func loadDuration(out *time.Duration, val string) error {
 	return err
 }
 
-func (r *Reader) loadReflect(dst interface{}, val, key string) error {
+func (r readState) loadReflect(dst interface{}, val, key string) error {
 	switch out := indirect(reflect.ValueOf(dst)); out.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return loadInt(out, val)
@@ -312,7 +355,7 @@ func (r *Reader) splitstring(key, value string) []string {
 	return strings.Fields(value)
 }
 
-func (r *Reader) loadSliceSeq(out reflect.Value, elemtype reflect.Type, val, key string) (ok bool, err error) {
+func (r readState) loadSliceSeq(out reflect.Value, elemtype reflect.Type, val, key string) (ok bool, err error) {
 	if kind := elemtype.Kind(); val != "" && kind != reflect.Ptr && kind != reflect.Struct {
 		return false, nil
 	}
@@ -322,8 +365,9 @@ func (r *Reader) loadSliceSeq(out reflect.Value, elemtype reflect.Type, val, key
 		maxLen = r.MaxSliceLen
 	)
 
-	if maxLen <= 0 {
-		maxLen = defaultMaxSliceLen
+	const minSliceLen = 1
+	if maxLen < minSliceLen {
+		maxLen = DefaultMaxSliceLen
 	}
 
 	for i := 1; i <= maxLen && err == nil; i++ {
@@ -346,7 +390,7 @@ func (r *Reader) loadSliceSeq(out reflect.Value, elemtype reflect.Type, val, key
 	return true, err
 }
 
-func (r *Reader) loadSliceSplit(out reflect.Value, elemtype reflect.Type, val, key string) (err error) {
+func (r readState) loadSliceSplit(out reflect.Value, elemtype reflect.Type, val, key string) (err error) {
 	var (
 		vals   = r.splitstring(key, val)
 		slice  = reflect.MakeSlice(out.Type(), len(vals), len(vals))
@@ -376,7 +420,7 @@ func (r *Reader) loadSliceSplit(out reflect.Value, elemtype reflect.Type, val, k
 	return err
 }
 
-func (r *Reader) loadSlice(out reflect.Value, val, key string) error {
+func (r readState) loadSlice(out reflect.Value, val, key string) error {
 	elemtype := out.Type().Elem()
 	ok, err := r.loadSliceSeq(out, elemtype, val, key)
 	if ok && (err == nil || !IsNoValue(err) || !isSplitType(elemtype)) {
@@ -388,13 +432,44 @@ func (r *Reader) loadSlice(out reflect.Value, val, key string) error {
 	return r.loadSliceSplit(out, elemtype, val, key)
 }
 
-func (r *Reader) loadStruct(out reflect.Value, key string) (err error) {
+func (r readState) loadStruct(out reflect.Value, key string) (err error) {
 	// NOTE: struct loading ignores ErrNoValue
 	typ := out.Type()
 	empty := true
 
 	var isset bool
+	// nestFields is all field indices that refer to a struct
+	var nestFields []int
+
 	for i, n := 0, typ.NumField(); i < n; i++ {
+		ftyp := out.Field(i).Type()
+		for ftyp.Kind() == reflect.Ptr {
+			ftyp = ftyp.Elem()
+		}
+
+		if ftyp.Kind() == reflect.Struct {
+			nestFields = append(nestFields, i)
+			continue
+		}
+
+		isset, err = r.loadStructField(out, typ, i, key)
+		if err != nil {
+			return err
+		}
+		empty = empty && !isset
+	}
+
+	if !empty {
+		r = r.reset()
+	} else {
+		r = r.descend()
+	}
+
+	if !r.canParseStruct() && empty {
+		goto skipStruct
+	}
+
+	for _, i := range nestFields {
 		isset, err = r.loadStructField(out, typ, i, key)
 		if err != nil {
 			break
@@ -402,6 +477,7 @@ func (r *Reader) loadStruct(out reflect.Value, key string) (err error) {
 		empty = empty && !isset
 	}
 
+skipStruct:
 	if empty && err == nil {
 		return NoValueError(key)
 	}
@@ -409,7 +485,7 @@ func (r *Reader) loadStruct(out reflect.Value, key string) (err error) {
 	return err
 }
 
-func (r *Reader) loadStructField(out reflect.Value, typ reflect.Type, fieldIdx int, key string) (isset bool, err error) {
+func (r readState) loadStructField(out reflect.Value, typ reflect.Type, fieldIdx int, key string) (isset bool, err error) {
 	f := typ.Field(fieldIdx)
 	if f.PkgPath != "" {
 		return
@@ -439,7 +515,7 @@ func (r *Reader) loadStructField(out reflect.Value, typ reflect.Type, fieldIdx i
 	if fi := reflect.Indirect(field); fi.IsValid() {
 		target.Elem().Set(fi)
 	}
-	if err = r.Getenv(dst, fname); err != nil && !IsNoValue(err) && !flags.quiet {
+	if err = r.loadFromEnv(dst, fname); err != nil && !IsNoValue(err) && !flags.quiet {
 		return isset, err
 	}
 	if flags.quiet {

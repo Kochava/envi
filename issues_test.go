@@ -1,6 +1,7 @@
 package envi
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -48,4 +49,92 @@ func TestPointerFields(t *testing.T) { // issue #2
 		t.Run("StructValueAssigned", runner(env, &Value{Value: Data{Size: 32}}, &Value{Value: Data{Size: 32}}))
 		t.Run("StructPointerAssigned", runner(env, &Pointer{Value: &Data{Size: 32}}, &Pointer{Value: &Data{Size: 32}}))
 	})
+}
+
+func TestCyclicalTypes(t *testing.T) { // issue #4
+	type Cycle struct {
+		Value int
+		Next  *Cycle
+	}
+
+	runner := func(max int, want *Cycle, env Env) func(*testing.T) {
+		return func(t *testing.T) {
+			dest := new(Cycle)
+			r := Reader{Source: env, Sep: "_", MaxDepth: max}
+			err := r.Getenv(dest, "Cycle")
+			if err != nil && !IsNoValue(err) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(dest, want) {
+				// Encode as JSON just to make it easier to visualize
+				jsondest, _ := json.Marshal(dest)
+				jsonwant, _ := json.Marshal(want)
+				t.Fatalf("got\t%s\nwant\t%s",
+					jsondest,
+					jsonwant,
+				)
+			}
+		}
+	}
+
+	t.Run("DefaultOutsideDepth", runner(
+		0, // max depth
+		&Cycle{Value: 1},
+		Values{ // 1  _ 2  _ 3  _ 4  _ 5  _ 6  _ 7  _ 8  _ 9  _ 10  _ 11
+			"Cycle_Value": {"1"},
+			"Cycle_Next_Next_Next_Next_Next_Next_Next_Next_Next_Value": {"10"},
+		},
+	))
+
+	t.Run("DefaultInsideDepth", runner(
+		0, // max depth
+		&Cycle{
+			Value: 1,
+			Next:  &Cycle{Next: &Cycle{Next: &Cycle{Next: &Cycle{Next: &Cycle{Next: &Cycle{Next: &Cycle{Next: &Cycle{Value: 9}}}}}}}},
+		},
+		Values{ // 1  _ 2  _ 3  _ 4  _ 5  _ 6  _ 7  _ 8  _ 9  _ 10  _ 11
+			"Cycle_Value": {"1"},
+			"Cycle_Next_Next_Next_Next_Next_Next_Next_Next_Value": {"9"},
+		},
+	))
+
+	t.Run("IgnoreOutOfDepth", runner(
+		2, // max depth
+		&Cycle{Value: 1},
+		Values{ // 1  _ 2  _ 3  _ 4  _ 5  _ 6
+			"Cycle_Value":                {"1"},
+			"Cycle_Next_Next_Next_Value": {"3"},
+		},
+	))
+
+	t.Run("ResetInsideDepth", runner(
+		2, // max depth
+		&Cycle{
+			Value: 1,
+			Next: &Cycle{
+				Next: &Cycle{
+					Value: 3,
+					Next: &Cycle{
+						Next: &Cycle{
+							Value: 5,
+						},
+					},
+				},
+			},
+		},
+		Values{ // 1  _ 2  _ 3  _ 4  _ 5  _ 6  _ 7  _ 8
+			"Cycle_Value":                                    {"1"},
+			"Cycle_Next_Next_Value":                          {"3"},
+			"Cycle_Next_Next_Next_Next_Value":                {"5"},
+			"Cycle_Next_Next_Next_Next_Next_Next_Next_Value": {"8"},
+		},
+	))
+
+	t.Run("IgnoreWithoutField", runner(
+		2, // max depth
+		&Cycle{},
+		Values{ // 1  _ 2  _ 3  _ 4  _ 5  _ 6
+			"Cycle_Next_Next_Value": {"3"},
+		},
+	))
 }
