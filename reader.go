@@ -441,43 +441,56 @@ func (r readState) loadStruct(out reflect.Value, key string) (err error) {
 	// nestFields is all field indices that refer to a struct
 	var nestFields []int
 
-	for i, n := 0, typ.NumField(); i < n; i++ {
-		ftyp := out.Field(i).Type()
+	// Load non-struct fields
+	for fid, n := 0, typ.NumField(); fid < n; fid++ {
+		ftyp := out.Field(fid).Type()
 		for ftyp.Kind() == reflect.Ptr {
 			ftyp = ftyp.Elem()
 		}
 
 		if ftyp.Kind() == reflect.Struct {
-			nestFields = append(nestFields, i)
+			nestFields = append(nestFields, fid)
 			continue
 		}
 
-		isset, err = r.loadStructField(out, typ, i, key)
+		isset, err = r.loadStructField(out, typ, fid, key)
 		if err != nil {
 			return err
 		}
 		empty = empty && !isset
 	}
 
+	// Load struct fields
 	if !empty {
 		r = r.reset()
 	} else {
 		r = r.descend()
 	}
 
-	if !r.canParseStruct() && empty {
-		goto skipStruct
-	}
-
-	for _, i := range nestFields {
-		isset, err = r.loadStructField(out, typ, i, key)
-		if err != nil {
-			break
+	if r.canParseStruct() || !empty {
+	restart:
+		for i, fid := range nestFields {
+			if fid < 0 { // If restarted, skip already-assigned fields
+				continue
+			}
+			isset, err = r.loadStructField(out, typ, fid, key)
+			if err != nil {
+				break
+			} else if isset {
+				// Mark already-assigned fields by negating them
+				nestFields[i] = -1 - fid
+			}
+			wasEmpty := empty
+			empty = empty && !isset
+			if wasEmpty && !empty {
+				r = r.reset()
+				if i > 0 {
+					goto restart
+				}
+			}
 		}
-		empty = empty && !isset
 	}
 
-skipStruct:
 	if empty && err == nil {
 		return NoValueError(key)
 	}

@@ -138,3 +138,50 @@ func TestCyclicalTypes(t *testing.T) { // issue #4
 		},
 	))
 }
+
+func TestCyclicalTypesAdjacent(t *testing.T) { // issue #8
+	type P struct {
+		V    int
+		L, R *P
+	}
+
+	runner := func(max int, want *P, env Env) func(*testing.T) {
+		return func(t *testing.T) {
+			dest := new(P)
+			r := Reader{Source: env, Sep: "_", MaxDepth: max}
+			err := r.Getenv(dest, "Cycle")
+			if err != nil && !IsNoValue(err) {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(dest, want) {
+				// Encode as JSON just to make it easier to visualize
+				jsondest, _ := json.Marshal(dest)
+				jsonwant, _ := json.Marshal(want)
+				t.Fatalf("got\t%s\nwant\t%s",
+					jsondest,
+					jsonwant,
+				)
+			}
+		}
+	}
+
+	t.Run("ResetCounterOnStructMatch", runner(
+		2, // max depth
+		&P{
+			R: &P{V: 2},
+			L: &P{L: &P{V: 4}},
+		},
+		Values{ //     1 2 3 4 5 6 7 7
+			"Cycle_R_V":   {"2"},
+			"Cycle_L_L_V": {"4"},
+		},
+	))
+
+	t.Run("NoMatchOutsideDepth", runner(
+		2, // max depth
+		&P{},
+		Values{ //     1 2 3 4 5 6 7 7
+			"Cycle_L_L_V": {"4"},
+		},
+	))
+}
