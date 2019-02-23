@@ -2,8 +2,8 @@ envi
 ====
 
 [![GoDoc](https://godoc.org/github.com/Kochava/envi?status.svg)](https://godoc.org/github.com/Kochava/envi)
-[![Build Status](https://travis-ci.org/Kochava/envi.svg?branch=master)](https://travis-ci.org/Kochava/envi)
-[![Coverage Status](https://coveralls.io/repos/github/Kochava/envi/badge.svg)](https://coveralls.io/github/Kochava/envi)
+[![CircleCI](https://circleci.com/gh/Kochava/envi.svg?style=svg)](https://circleci.com/gh/Kochava/envi)
+[![codecov](https://codecov.io/gh/Kochava/envi/branch/master/graph/badge.svg)](https://codecov.io/gh/Kochava/envi)
 
 
 envi is a library for loading data from structured environment variables and
